@@ -1,0 +1,65 @@
+version: '3.8'
+services:
+
+  hazelcast:
+    image: hazelcast/hazelcast:5.5.6
+    ports:
+      - "5701:5701"
+    environment:
+      - HZ_NETWORK_PUBLICADDRESS=hazelcast:5701
+      - HZ_CLUSTERNAME=dev
+
+  management-center:
+    image: hazelcast/management-center:5.8.0
+    ports:
+      - "8080:8080"
+    environment:
+      - MC_DEFAULT_CLUSTER=dev
+      - MC_DEFAULT_CLUSTER_MEMBERS=hazelcast
+    depends_on:
+      - hazelcast
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: sqlserver
+    environment:
+      ACCEPT_EULA: 'Y'
+      SA_PASSWORD: 'Password123'
+      MSSQL_PID: 'Developer'
+    ports:
+      - 1433:1433
+    volumes:
+      - ./init-sqlserver.sh:/init-sqlserver.sh
+    entrypoint:
+      - "/bin/bash"
+      - "-c"
+      - "/init-sqlserver.sh & /opt/mssql/bin/sqlservr"
+
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    ports:
+      - 27017:27017
+
+  maven:
+    image: maven:3.9.6-eclipse-temurin-17
+    container_name: maven-build
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app
+    command: mvn clean package
+
+  app:
+    image: eclipse-temurin:17
+    container_name: java-runner
+    depends_on:
+      - hazelcast
+      - management-center
+      - maven
+      - sqlserver
+      - mongo
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app
+    command: >
+      bash -c "sleep 15 && java -jar target/hazelcast-mongo-cdc-1.0-SNAPSHOT-shaded.jar"
